@@ -269,12 +269,17 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
         Set<String> added = new HashSet<>(LibraryApps.load(ctx));
         added.addAll(libraryPreload);
         Set<String> removed = LibraryApps.loadRemoved(ctx);
-        if (!added.isEmpty()) {
-            Set<String> seen = new HashSet<>(tvPackages);
-            for (ResolveInfo ri : pm.queryIntentActivities(
-                    new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)) {
-                if (ri.activityInfo != null && added.contains(ri.activityInfo.packageName)
-                        && seen.add(ri.activityInfo.packageName)) found.add(ri);
+        // Whitelist: non-LEANBACK apps that should still appear as tiles (e.g. third-party launchers).
+        Set<String> whitelist = new HashSet<>(Arrays.asList("com.dangbei.tvlauncher"));
+        for (String pkg : whitelist) {
+            if (tvPackages.contains(pkg)) continue;   // already in the LEANBACK list
+            try {
+                Intent intent = pm.getLaunchIntentForPackage(pkg);
+                if (intent != null && intent.getComponent() != null) {
+                    ResolveInfo ri = pm.resolveActivity(intent, 0);
+                    if (ri != null && ri.activityInfo != null && ri.activityInfo.exported) found.add(ri);
+                }
+            } catch (Exception ignored) {
             }
         }
         Map<String, Cards.Card> cardByPkg = new HashMap<>();
@@ -287,7 +292,7 @@ public class AppAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
             if (ri.activityInfo == null) continue;
             String pkg = ri.activityInfo.packageName;
             if (pkg.equals(ctx.getPackageName()) || !ri.activityInfo.exported
-                    || !LibraryApps.visible(tvPackages.contains(pkg), hidden.contains(pkg), added.contains(pkg), removed.contains(pkg))) continue;
+                    || !LibraryApps.visible(tvPackages.contains(pkg) || whitelist.contains(pkg), hidden.contains(pkg), added.contains(pkg), removed.contains(pkg))) continue;
             ComponentName component = new ComponentName(pkg, ri.activityInfo.name);
             Cards.Card card = cardByPkg.get(pkg);
             if (card != null && !card.component.equals(component)) continue;   // the card stands in for this tile
